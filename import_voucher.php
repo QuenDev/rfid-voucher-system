@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
+            $voucherService = new VoucherService($pdo);
             $inserted = 0;
             $skipped = 0;
 
@@ -24,14 +25,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($voucher_code && $office && $minutes_valid > 0) {
                     try {
-                        $stmt = $conn->prepare("INSERT INTO vouchers (voucher_code, office_department, minutes_valid, status, date_issued) VALUES (?, ?, ?, 'Available', NOW())");
-                        $stmt->bind_param("ssi", $voucher_code, $office, $minutes_valid);
-                        $stmt->execute();
-                        $stmt->close();
-                        $inserted++;
-                    } catch (mysqli_sql_exception $e) {
-                        if ($e->getCode() == 1062) {
-                           
+                        if ($voucherService->create([
+                            'voucher_code' => $voucher_code,
+                            'office_department' => $office,
+                            'minutes_valid' => $minutes_valid
+                        ])) {
+                            $inserted++;
+                        }
+                    } catch (PDOException $e) {
+                        if ($e->getCode() == 23000) { // Duplicate entry
                             $skipped++;
                         } else {
                             throw $e;

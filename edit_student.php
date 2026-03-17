@@ -1,410 +1,167 @@
 <?php
-session_start();
-require "config.php";
+require_once 'includes/auth.php';
+require_once 'includes/db.php';
+require_once 'includes/functions.php';
 
-// Authentication check
-if (!isset($_SESSION['admin_id'])) {
-    header("Location: login.php");
-    exit();
-}
+// Security Guard
+requireLogin();
 
 $admin_id = $_SESSION['admin_id'];
-
-// Fetch admin username
-$stmt = $conn->prepare("SELECT fullname FROM adminstafflogs WHERE id = ?");
-$stmt->bind_param("i", $admin_id);
-$stmt->execute();
-$admin = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$admin) {
-    echo "Admin data not found!";
-    exit();
-}
+$studentService = new StudentService($pdo);
 
 // Get the student ID from URL
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
-    echo "Invalid student ID!";
-    exit();
+    die("Invalid student ID!");
 }
 
-$student_id = intval($_GET['id']);
-
-// Fetch the student details
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->bind_param("i", $student_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$student = $result->fetch_assoc();
-$stmt->close();
+$id = intval($_GET['id']);
+$student = $studentService->getById($id);
 
 if (!$student) {
-    echo "Student not found!";
-    exit();
+    die("Student not found!");
 }
-
-// Initialize messages
-$success = "";
-$error = "";
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $rfid = $_POST['rfid'];
-    $student_id_num = $_POST['student_id'];
-    $last_name = $_POST['last_name'];
-    $first_name = $_POST['first_name'];
-    $middle_name = $_POST['middle_name'];
-    $sex = $_POST['sex'];
-    $course = $_POST['course'];
-    $year = $_POST['year'];
-    $section = $_POST['section'];
+    $data = [
+        'rfid' => trim($_POST['rfid']),
+        'student_id' => trim($_POST['student_id']),
+        'last_name' => trim($_POST['last_name']),
+        'first_name' => trim($_POST['first_name']),
+        'middle_name' => trim($_POST['middle_name']),
+        'sex' => $_POST['sex'],
+        'course' => trim($_POST['course']),
+        'year' => intval($_POST['year']),
+        'section' => trim($_POST['section'])
+    ];
 
     // Handle picture upload
-if (isset($_FILES['picture']) && $_FILES['picture']['error'] == UPLOAD_ERR_OK) {
-    $upload_dir = 'uploads/';
-    $new_filename = uniqid() . "_" . basename($_FILES["picture"]["name"]);
-    $target_file = $upload_dir . $new_filename;
+    if (isset($_FILES['picture']) && $_FILES['picture']['error'] == UPLOAD_ERR_OK) {
+        $upload_dir = 'uploads/';
+        $new_filename = uniqid() . "_" . basename($_FILES["picture"]["name"]);
+        $target_file = $upload_dir . $new_filename;
 
-    if (move_uploaded_file($_FILES["picture"]["tmp_name"], $target_file)) {
-        // Remove old picture if it exists and is not empty
-        if (!empty($student['picture']) && file_exists($upload_dir . $student['picture'])) {
-            unlink($upload_dir . $student['picture']);
+        if (move_uploaded_file($_FILES["picture"]["tmp_name"], $target_file)) {
+            // Remove old picture if it exists
+            if (!empty($student['picture']) && file_exists($upload_dir . $student['picture'])) {
+                unlink($upload_dir . $student['picture']);
+            }
+            $data['picture'] = $new_filename; 
         }
-        $picture = $new_filename; 
-    } else {
-        $error = "Error uploading picture!";
-    }
-} else {
-    $picture = $student['picture'];
-}
-
-    if (!$error) {
-      
-        $check_stmt = $conn->prepare("SELECT id FROM users WHERE (rfid = ? OR student_id = ?) AND id != ?");
-        $check_stmt->bind_param("ssi", $rfid, $student_id_num, $student_id);
-        $check_stmt->execute();
-        $check_stmt->store_result();
-        if ($check_stmt->num_rows > 0) {
-            $error = "RFID or Student ID already exists!";
-        }
-        $check_stmt->close();
     }
 
-    if (!$error) {
-        $stmt = $conn->prepare("UPDATE users SET rfid=?, student_id=?, last_name=?, first_name=?, middle_name=?, sex=?, course=?, year=?, section=?, picture=? WHERE id=?");
-        $stmt->bind_param("ssssssssssi", $rfid, $student_id_num, $last_name, $first_name, $middle_name, $sex, $course, $year, $section, $picture, $student_id);
-
-        if ($stmt->execute()) {
-            $success = "Student updated successfully!";
-           
-            $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-            $stmt->bind_param("i", $student_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $student = $result->fetch_assoc();
+    try {
+        if ($studentService->update($id, $data)) {
+            $_SESSION['edit_success'] = "Student updated successfully!";
+            header("Location: edit_student.php?id=" . $id);
+            exit();
         } else {
-            $error = "Error updating student!";
+            $error = "Failed to update student.";
         }
-        $stmt->close();
+    } catch (Exception $e) {
+        $error = "Error: " . $e->getMessage();
     }
 }
+
+$pageTitle = "Edit Student";
+include 'includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Edit Student</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-    <style>
-        :root {
-            --primary: #38A169;
-            --green-dark: #2F855A;
-            --green-light: #48BB78;
-            --secondary: #2c3e50;
-            --light: #ecf0f1;
-            --dark: #34495e;
-        }
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f7fa;
-            color: #333;
-        }
-        .dashboard {
-            display: grid;
-            grid-template-columns: 240px 1fr;
-            min-height: 100vh;
-        }
-        .sidebar {
-            background: linear-gradient(to bottom, var(--primary), var(--green-dark));
-            color: white;
-        }
-        .logo-placeholder {
-            text-align: center;
-            padding: 10px;
-        }
-        .logo-placeholder img {
-            max-width: 80%;
-        }
-         .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px 20px;
-            color: white;
-            text-decoration: none;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            transition: background 0.3s, transform 0.2s;
-        }
-        .nav-item:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(5px);
-        }
-        .nav-item i {
-            min-width: 20px;
-        }
-        .nav-item.active {
-            background: rgba(255, 255, 255, 0.3);
-            font-weight: bold;
-            border-left: 4px solid white;
-        }
-        .sidebar-section-title {
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            padding: 10px 20px 5px;
-            color: rgba(255, 255, 255, 0.7);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        }
-        .user-info {
-            padding: 20px;
-            text-align: center;
-        }
-        .main-content {
-            padding: 20px;
-        }
-        .main-header {
-            background: linear-gradient(to right, var(--primary), var(--green-dark));
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .admin-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255,255,255,0.2);
-            padding: 6px 12px;
-            border-radius: 20px;
-        }
-        .avatar {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            background: white;
-            color: var(--green-dark);
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
-        }
-        .student-card {
-            background: #f0fff4;
-            border-radius: 10px;
-            padding: 30px;
-            margin: auto;
-            max-width: 600px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        .student-info-form {
-            display: flex;
-            flex-direction: column;
-        }
-        .student-info-form label {
-            font-weight: bold;
-            margin-top: 10px;
-            font-size: 14px;
-            color: var(--secondary);
-        }
-        .student-info-form input, .student-info-form select {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin-top: 4px;
-            font-size: 15px;
-        }
-        .student-picture {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .student-picture img {
-            width: 150px;
-            height: 150px;
-            object-fit: cover;
-            border: 3px solid var(--primary);
-            background: white;
-            border-radius: 10px;
-        }
-        .form-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .save-btn, .cancel-btn {
-            flex: 1;
-            padding: 1px;
-        
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .save-btn {
-            background-color: var(--primary);
-            color: white;
-        }
-        .save-btn:hover {
-            background-color: var(--green-light);
-        }
-        .cancel-btn {
-            background-color: #ccc;
-            color: black;
-            text-decoration: none;
-            text-align: center;
-            line-height: 30px;
-        }
-        .error-msg {
-            background-color: #ffe6e6;
-            color: #c00;
-            border: 1px solid #c00;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .success-msg {
-            background-color: #e6ffed;
-            color: #2e7d32;
-            border: 1px solid #2e7d32;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-
-<div class="dashboard">
-    <div class="sidebar">
-        <div class="logo-placeholder">
-            <img src="isu-logo.png" alt="University Logo" onerror="this.src='fallback.png'">
+<div style="max-width: 800px; margin: 0 auto;">
+    <div class="card" style="padding: 2.5rem;">
+        <div style="margin-bottom: 2rem;">
+            <a href="students.php" style="color: var(--text-muted); text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-arrow-left"></i> Back to Student Records
+            </a>
+            <h2 style="margin: 1.5rem 0 0.5rem; color: var(--text-main);">Edit Student Profile</h2>
         </div>
 
-        <div class="sidebar-section-title">Navigation</div>
-        <a href="dashboard.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : '' ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="vouchers.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'vouchers.php' ? 'active' : '' ?>">
-            <i class="fas fa-ticket-alt"></i> Voucher Management
-        </a>
-        <a href="students.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'students.php' ? 'active' : '' ?>">
-            <i class="fas fa-user-graduate"></i> Student Records
-        </a>
-        <a href="accounts.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'accounts.php' ? 'active' : '' ?>">
-            <i class="fas fa-users-cog"></i> Manage Accounts
-        </a>
-        <a href="reports.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'reports.php' ? 'active' : '' ?>">
-            <i class="fas fa-file-alt"></i> Reports
-        </a>
-        <div class="sidebar-section-title">Settings</div>
-        <a href="logout.php" class="nav-item">
-            <i class="fas fa-sign-out-alt"></i> Logout
-        </a>
-    </div>
+        <?php if (isset($_SESSION['edit_success'])): ?>
+            <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
+                <i class="fas fa-check-circle"></i> <?= $_SESSION['edit_success']; unset($_SESSION['edit_success']); ?>
+            </div>
+        <?php endif; ?>
 
-    <div class="main-content">
-        <header class="main-header">
-            <div class="header-content">
-                <div>
-                    <h1 style="margin: 0; font-size: 1.8rem;">Edit Student</h1>
-                    <p style="margin: 5px 0 0; font-size: 1rem;">Modify Student Information</p>
-                </div>
-                <div class="admin-info">
-                    <div class="avatar"><?= strtoupper($admin['fullname'][0]) ?></div>
-                    <div class="fullname"><?= htmlspecialchars($admin['fullname']) ?></div>
+        <?php if (isset($error)): ?>
+            <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
+                <i class="fas fa-exclamation-circle"></i> <?= $error ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST" enctype="multipart/form-data">
+            <div style="display: flex; justify-content: center; margin-bottom: 2.5rem;">
+                <div style="position: relative; width: 120px; height: 120px;">
+                    <?php if (!empty($student['picture'])): ?>
+                        <img src="uploads/<?= htmlspecialchars($student['picture']) ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid var(--accent-color);">
+                    <?php else: ?>
+                        <div style="width: 100%; height: 100%; border-radius: 50%; background: #f7fafc; display: flex; align-items: center; justify-content: center; border: 4px solid #e2e8f0; color: #cbd5e0;">
+                            <i class="fas fa-user" style="font-size: 3rem;"></i>
+                        </div>
+                    <?php endif; ?>
+                    <label for="picture" style="position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; background: var(--accent-color); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 3px solid white; transition: transform 0.2s;">
+                        <i class="fas fa-camera"></i>
+                    </label>
+                    <input type="file" name="picture" id="picture" accept="image/*" style="display: none;">
                 </div>
             </div>
-        </header>
 
-        <div class="student-card">
-            <?php if ($error): ?>
-                <div class="error-msg"><?= htmlspecialchars($error) ?></div>
-            <?php elseif ($success): ?>
-                <div class="success-msg"><?= htmlspecialchars($success) ?></div>
-            <?php endif; ?>
-
-            <form method="POST" enctype="multipart/form-data" class="student-info-form">
-                <div class="student-picture">
-                    <?php if (!empty($student['picture'])): ?>
-                        <img src="uploads/<?= htmlspecialchars($student['picture']) ?>" alt="Student Picture">
-                    <?php else: ?>
-                        <img src="no-photo.png" alt="No Student Picture">
-                    <?php endif; ?>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                <div class="form-group">
+                    <label>RFID Tag No.</label>
+                    <input type="text" name="rfid" class="form-control" value="<?= htmlspecialchars($student['rfid']) ?>" required>
                 </div>
 
-                <label>Upload New Picture (optional):</label>
-                <input type="file" name="picture" accept="image/*">
-
-                <label>RFID:</label>
-                <input type="text" name="rfid" value="<?= htmlspecialchars($student['rfid']) ?>" required>
-
-                <label>Student ID:</label>
-                <input type="text" name="student_id" value="<?= htmlspecialchars($student['student_id']) ?>" required>
-
-                <label>Last Name:</label>
-                <input type="text" name="last_name" value="<?= htmlspecialchars($student['last_name']) ?>" required>
-
-                <label>First Name:</label>
-                <input type="text" name="first_name" value="<?= htmlspecialchars($student['first_name']) ?>" required>
-
-                <label>Middle Name:</label>
-                <input type="text" name="middle_name" value="<?= htmlspecialchars($student['middle_name']) ?>">
-
-                <label>Sex:</label>
-                <select name="sex" required>
-                    <option value="M" <?= $student['sex'] == 'M' ? 'selected' : '' ?>>Male</option>
-                    <option value="F" <?= $student['sex'] == 'F' ? 'selected' : '' ?>>Female</option>
-                </select>
-
-                <label>Course:</label>
-                <input type="text" name="course" value="<?= htmlspecialchars($student['course']) ?>" required>
-
-                <label>Year:</label>
-                <input type="text" name="year" value="<?= htmlspecialchars($student['year']) ?>" required>
-
-                <label>Section:</label>
-                <input type="text" name="section" value="<?= htmlspecialchars($student['section']) ?>" required>
-
-                <div class="form-actions">
-                    <button type="submit" class="save-btn">Save Changes</button>
-                    <a href="students.php" class="cancel-btn">Back<a/>
+                <div class="form-group">
+                    <label>Student ID</label>
+                    <input type="text" name="student_id" class="form-control" value="<?= htmlspecialchars($student['student_id']) ?>" required>
                 </div>
-            </form>
-        </div>
+
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" name="last_name" class="form-control" value="<?= htmlspecialchars($student['last_name']) ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" name="first_name" class="form-control" value="<?= htmlspecialchars($student['first_name']) ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Middle Name</label>
+                    <input type="text" name="middle_name" class="form-control" value="<?= htmlspecialchars($student['middle_name']) ?>">
+                </div>
+
+                <div class="form-group">
+                    <label>Gender/Sex</label>
+                    <select name="sex" class="form-control" required>
+                        <option value="M" <?= $student['sex'] == 'M' ? 'selected' : '' ?>>Male</option>
+                        <option value="F" <?= $student['sex'] == 'F' ? 'selected' : '' ?>>Female</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Course</label>
+                    <input type="text" name="course" class="form-control" value="<?= htmlspecialchars($student['course']) ?>" required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>Year Level</label>
+                        <input type="number" name="year" class="form-control" value="<?= htmlspecialchars($student['year']) ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Section</label>
+                        <input type="text" name="section" class="form-control" value="<?= htmlspecialchars($student['section']) ?>" required>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #edf2f7; display: flex; gap: 1rem; justify-content: flex-end;">
+                <a href="students.php" class="btn" style="background: #edf2f7; color: var(--text-main); text-decoration: none; padding: 12px 24px;">Cancel</a>
+                <button type="submit" class="btn btn-primary" style="padding: 12px 32px;">Update Record</button>
+            </div>
+        </form>
     </div>
 </div>
 
-</body>
-</html>
+<?php include 'includes/footer.php'; ?>
