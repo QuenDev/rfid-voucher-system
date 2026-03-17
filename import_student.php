@@ -13,7 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
         $sheet = $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray();
 
-        $conn->begin_transaction();
+        $studentService = new StudentService($pdo);
+        $pdo->beginTransaction();
 
         $importedCount = 0;
         $duplicateCount = 0;
@@ -21,41 +22,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
         foreach ($rows as $index => $row) {
             if ($index === 0) continue;  // Skip header row
 
-            $row = array_pad($row, 9, ''); // Ensure 9 columns
+            $row = array_pad($row, 9, ''); 
             [$student_id, $last_name, $first_name, $middle_name, $sex, $course, $year, $section, $rfid] = $row;
 
-            // Validate required fields
             if (empty($student_id) || empty($last_name) || empty($first_name) || !in_array($sex, ['M', 'F'])) {
-                continue; // Skip invalid rows
+                continue; 
             }
 
             // Check for duplicates
-            $check = $conn->prepare("SELECT id FROM users WHERE student_id = ? OR rfid = ?");
-            $check->bind_param("ss", $student_id, $rfid);
-            $check->execute();
-            $checkResult = $check->get_result();
-
-            if ($checkResult->num_rows > 0) {
-                $duplicateCount++;
-                continue; // Skip duplicate
+            // We can add a more efficient method to StudentService later if needed
+            $existing = $studentService->getByRFID($rfid);
+            if (!$existing) {
+                // Also check ID
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE student_id = ?");
+                $stmt->execute([$student_id]);
+                $existing = $stmt->fetch();
             }
 
-            $picture = null; // Placeholder for picture
+            if ($existing) {
+                $duplicateCount++;
+                continue;
+            }
 
-            // Insert student
-            $stmt = $conn->prepare("INSERT INTO users (
-                rfid, student_id, last_name, first_name, middle_name, sex, course, year, section, picture
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-            $stmt->bind_param("ssssssssss", $rfid, $student_id, $last_name, $first_name, $middle_name, $sex, $course, $year, $section, $picture);
-            $stmt->execute();
+            $studentService->create([
+                'rfid' => $rfid,
+                'student_id' => $student_id,
+                'last_name' => $last_name,
+                'first_name' => $first_name,
+                'middle_name' => $middle_name,
+                'sex' => $sex,
+                'course' => $course,
+                'year' => $year,
+                'section' => $section,
+                'picture' => null
+            ]);
             $importedCount++;
         }
 
-        $conn->commit();
+        $pdo->commit();
         $_SESSION['import_success'] = " {$importedCount} student(s) imported,  {$duplicateCount} duplicate(s).";
     } catch (Exception $e) {
-        $conn->rollback();
+        if ($pdo->inTransaction()) $pdo->rollback();
         $_SESSION['import_error'] = "Import failed: " . $e->getMessage();
     }
 }

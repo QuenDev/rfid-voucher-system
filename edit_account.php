@@ -1,37 +1,25 @@
 <?php
-session_start();
-require "config.php";
+require_once 'includes/auth.php';
+require_once 'includes/db.php';
+require_once 'includes/functions.php';
 
-// Authentication check
-if (!isset($_SESSION['admin_id'])) {
-    header("Location: login.php");
-    exit();
-}
+// Security Guard
+requireLogin();
 
 $admin_id = $_SESSION['admin_id'];
-$edit_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
-if (!$edit_id) {
-    echo "Invalid user ID.";
+// Get account ID
+if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+    header("Location: accounts.php");
     exit();
 }
 
-
-$stmt = $conn->prepare("SELECT fullname FROM adminstafflogs WHERE id = ?");
-$stmt->bind_param("i", $admin_id);
-$stmt->execute();
-$admin = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-// Fetch account to edit
-$stmt = $conn->prepare("SELECT * FROM adminstafflogs WHERE id = ?");
-$stmt->bind_param("i", $edit_id);
-$stmt->execute();
-$account = $stmt->get_result()->fetch_assoc();
-$stmt->close();
+$id = intval($_GET['id']);
+$accountService = new AccountService($pdo);
+$account = $accountService->getById($id);
 
 if (!$account) {
-    echo "Account not found!";
+    header("Location: accounts.php");
     exit();
 }
 
@@ -43,242 +31,103 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $role = trim($_POST['role']);
     $new_password = trim($_POST['password']);
 
+    $data = [
+        'fullname' => $fullname,
+        'username' => $username,
+        'office' => $office,
+        'role' => $role
+    ];
+
+    if (!empty($new_password)) {
+        $data['password'] = password_hash($new_password, PASSWORD_DEFAULT);
+    }
+
     try {
-        if (!empty($new_password)) {
-            $hashed = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE adminstafflogs SET fullname = ?, username = ?, password = ?, office = ?, role = ? WHERE id = ?");
-            $stmt->bind_param("sssssi", $fullname, $username, $hashed, $office, $role, $edit_id);
+        if ($accountService->update($id, $data)) {
+            // Update session if editing self
+            if ($id == $admin_id) {
+                $_SESSION['fullname'] = $fullname;
+                $_SESSION['role'] = $role;
+            }
+            $_SESSION['edit_success'] = "Account updated successfully!";
         } else {
-            $stmt = $conn->prepare("UPDATE adminstafflogs SET fullname = ?, username = ?, office = ?, role = ? WHERE id = ?");
-            $stmt->bind_param("ssssi", $fullname, $username, $office, $role, $edit_id);
+            $_SESSION['edit_error'] = "Failed to update account.";
         }
-        $stmt->execute();
-        $_SESSION['edit_success'] = "Account updated successfully!";
-    } catch (mysqli_sql_exception $e) {
-        if ($e->getCode() == 1062) {
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), '1062') !== false) {
             $_SESSION['edit_error'] = "Username already exists. Please choose a different one.";
         } else {
-            $_SESSION['edit_error'] = "Database error: " . $e->getMessage();
+            $_SESSION['edit_error'] = "Error: " . $e->getMessage();
         }
     }
 
-    header("Location: edit_account.php?id=$edit_id");
+    header("Location: edit_account.php?id=$id");
     exit();
 }
+
+$pageTitle = "Edit Account";
+include 'includes/header.php';
 ?>
 
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Edit Account</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-    <style>
-       :root {
-            --primary: #38A169;
-            --green-dark: #2F855A;
-            --green-light: #48BB78;
-            --secondary: #2c3e50;
-            --light: #ecf0f1;
-            --dark: #34495e;
-        }
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f7fa;
-            color: #333;
-        }
-        .dashboard {
-            display: grid;
-            grid-template-columns: 240px 1fr;
-            min-height: 100vh;
-        }
-        .sidebar {
-            background: linear-gradient(to bottom, var(--primary), var(--green-dark));
-            color: white;
-        }
-        .logo-placeholder {
-            text-align: center;
-            padding: 10px;
-        }
-        .logo-placeholder img {
-            max-width: 80%;
-        }
-          .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px 20px;
-            color: white;
-            text-decoration: none;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            transition: background 0.3s, transform 0.2s;
-        }
-        .nav-item:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(5px);
-        }
-        .nav-item i {
-            min-width: 20px;
-        }
-        .nav-item.active {
-            background: rgba(255, 255, 255, 0.3);
-            font-weight: bold;
-            border-left: 4px solid white;
-        }
-        .sidebar-section-title {
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            padding: 10px 20px 5px;
-            color: rgba(255, 255, 255, 0.7);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .main-content {
-            padding: 20px;
-        }
-        .main-header {
-            background: linear-gradient(to right, var(--primary), var(--green-dark));
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .admin-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255,255,255,0.2);
-            padding: 6px 12px;
-            border-radius: 20px;
-        }
-        .avatar {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            background: white;
-            color: var(--green-dark);
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
-        }
-        .upload-section {
-            margin-bottom: 30px;
-            padding: 20px;
-            background: #f0fdf4;
-            border: 1px solid #c6f6d5;
-            border-radius: 10px;
-        }
-        .upload-section input[type="text"],
-        .upload-section input[type="password"],
-        .upload-section select {
-            margin-top: 10px;
-            width: 200px;
-        }
-        .upload-section button {
-            background-color: #38A169;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        @media (max-width: 768px) {
-            .dashboard {
-                grid-template-columns: 1fr;
-            }
-            .sidebar {
-                display: none;
-            }
-        }
-    </style>
-</head>
-
-<body>
-<div class="dashboard">
-    <div class="sidebar">
-        <div class="logo-placeholder">
-            <img src="isu-logo.png" alt="University Logo" onerror="this.src='fallback.png'">
+<div style="max-width: 600px; margin: 0 auto;">
+    <div class="card" style="padding: 2.5rem;">
+        <div style="margin-bottom: 2rem;">
+            <a href="accounts.php" style="color: var(--text-muted); text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">
+                <i class="fas fa-arrow-left"></i> Back to Accounts
+            </a>
+            <h2 style="margin: 1.5rem 0 0.5rem; color: var(--text-main);">Edit Account Settings</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">Update credentials and department info for <?= htmlspecialchars($account['fullname']) ?>.</p>
         </div>
 
-        <div class="sidebar-section-title">Navigation</div>
-        <a href="dashboard.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : '' ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="vouchers.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'vouchers.php' ? 'active' : '' ?>">
-            <i class="fas fa-ticket-alt"></i> Voucher Management
-        </a>
-        <a href="students.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'students.php' ? 'active' : '' ?>">
-            <i class="fas fa-user-graduate"></i> Student Records
-        </a>
-        <a href="accounts.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'accounts.php' ? 'active' : '' ?>">
-            <i class="fas fa-users-cog"></i> Manage Accounts
-        </a>
-        <a href="reports.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'reports.php' ? 'active' : '' ?>">
-            <i class="fas fa-file-alt"></i> Reports
-        </a>
-        <div class="sidebar-section-title">Settings</div>
-        <a href="logout.php" class="nav-item">
-            <i class="fas fa-sign-out-alt"></i> Logout
-        </a>
-    </div>
-    <div class="main-content">
-        <header class="main-header">
-            <div class="header-content">
-                <div>
-                    <h1 style="margin: 0; font-size: 1.8rem;">Edit Account</h1>
-                    <p style="margin: 5px 0 0; font-size: 1rem;">Modify existing admin or staff account</p>
-                </div>
-                <div class="admin-info">
-                    <div class="avatar"><?= strtoupper($admin['fullname'][0]) ?></div>
-                    <div class="fullname"><?= htmlspecialchars($admin['fullname']) ?></div>
-                </div>
-            </div>
-        </header>
-
+        <!-- Messages -->
         <?php if (isset($_SESSION['edit_success'])): ?>
-            <p style="color: green; font-weight: bold;"><?= $_SESSION['edit_success'] ?></p>
-            <?php unset($_SESSION['edit_success']); ?>
+            <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
+                <i class="fas fa-check-circle"></i> <?= $_SESSION['edit_success']; unset($_SESSION['edit_success']); ?>
+            </div>
         <?php endif; ?>
 
         <?php if (isset($_SESSION['edit_error'])): ?>
-            <p style="color: red; font-weight: bold;"><?= $_SESSION['edit_error'] ?></p>
-            <?php unset($_SESSION['edit_error']); ?>
+            <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
+                <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['edit_error']; unset($_SESSION['edit_error']); ?>
+            </div>
         <?php endif; ?>
 
-        <div class="upload-section">
-            <form method="POST">
-                <label for="fullname">Full Name:</label><br>
-                <input type="text" name="fullname" id="fullname" value="<?= htmlspecialchars($account['fullname']) ?>" required><br><br>
+        <form method="POST" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div class="form-group">
+                <label for="fullname">Full Name</label>
+                <input type="text" name="fullname" id="fullname" class="form-control" value="<?= htmlspecialchars($account['fullname']) ?>" required>
+            </div>
 
-                <label for="username">Username:</label><br>
-                <input type="text" name="username" id="username" value="<?= htmlspecialchars($account['username']) ?>" required><br><br>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" name="username" id="username" class="form-control" value="<?= htmlspecialchars($account['username']) ?>" required>
+            </div>
 
-                <label for="password">New Password (leave blank to keep current):</label><br>
-                <input type="password" name="password" id="password"><br><br>
+            <div class="form-group">
+                <label for="password">Change Password</label>
+                <input type="password" name="password" id="password" class="form-control" placeholder="Leave blank to keep current">
+                <small style="color: var(--text-muted); font-size: 0.75rem;">Only fill this if you want to reset the password.</small>
+            </div>
 
-                <label for="office">Office/Department:</label><br>
-                <input type="text" name="office" id="office" value="<?= htmlspecialchars($account['office']) ?>" required><br><br>
+            <div class="form-group">
+                <label for="office">Office / Department</label>
+                <input type="text" name="office" id="office" class="form-control" value="<?= htmlspecialchars($account['office']) ?>" required>
+            </div>
 
-                <label for="role">Role:</label><br>
-                <select name="role" id="role" required>
-                    <option value="admin" <?= $account['role'] === 'admin' ? 'selected' : '' ?>>Admin</option>
-                    <option value="staff" <?= $account['role'] === 'staff' ? 'selected' : '' ?>>Staff</option>
-                </select><br><br>
+            <div class="form-group">
+                <label for="role">Account Role</label>
+                <select name="role" id="role" class="form-control" required>
+                    <option value="admin" <?= $account['role'] === 'admin' ? 'selected' : '' ?>>Admin (Full Access)</option>
+                    <option value="staff" <?= $account['role'] === 'staff' ? 'selected' : '' ?>>Staff (Limited Access)</option>
+                </select>
+            </div>
 
-                <button type="submit">Update Account</button>
-            </form>
-        </div>
+            <div style="margin-top: 1rem; padding-top: 1.5rem; border-top: 1px solid #edf2f7; display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 2; padding: 12px;">Save Changes</button>
+                <a href="accounts.php" class="btn" style="flex: 1; background: #edf2f7; color: var(--text-main); text-align: center; text-decoration: none; padding: 12px;">Cancel</a>
+            </div>
+        </form>
     </div>
 </div>
-</body>
-</html>
+
+<?php include 'includes/footer.php'; ?>
