@@ -1,7 +1,7 @@
 <?php
-require_once 'includes/auth.php';
-require_once 'includes/db.php';
-require_once 'includes/functions.php';
+require_once '../server/includes/auth.php';
+require_once '../server/includes/db.php';
+require_once '../server/includes/functions.php';
 
 // Security Guard
 requireLogin();
@@ -63,7 +63,7 @@ include 'includes/header.php';
         <!-- Hidden Import Section -->
         <div id="import-section" class="<?php echo (isset($_SESSION['import_error']) || isset($_SESSION['import_success'])) ? '' : 'hidden'; ?>" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #edf2f7;">
             <div style="background: #f0fdf4; border: 1px dashed var(--accent-color); padding: 1.5rem; border-radius: var(--radius-md);">
-                <form action="import_student.php" method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <form action="../server/import_student.php" method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
                     <div style="flex: 1;">
                         <label for="excel" style="display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem;">Select Student Excel File (.xls, .xlsx)</label>
                         <input type="file" name="excel_file" id="excel" accept=".xls,.xlsx" required class="form-control" style="background: white;">

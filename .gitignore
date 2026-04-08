@@ -3,3 +3,7 @@ composer.lock
 /uploads/
 *.exe
 /composer/
+*.sql
+.env
+/Database Files/
+refactor.py
