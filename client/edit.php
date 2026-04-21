@@ -16,7 +16,9 @@ if (!isset($_GET['voucher_id']) || !is_numeric($_GET['voucher_id'])) {
 }
 
 $id = intval($_GET['voucher_id']);
-$voucherService = new VoucherService($pdo);
+$admin_id = $_SESSION['admin_id'] ?? null;
+$auditService = new AuditService($pdo);
+$voucherService = new VoucherService($pdo, $auditService, $admin_id);
 $voucher = $voucherService->getById($id);
 
 if (!$voucher) {
@@ -27,6 +29,7 @@ if (!$voucher) {
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validateCsrfToken();
     $data = [
         'voucher_code' => trim($_POST['voucher_code']),
         'office_department' => trim($_POST['office_department']),
@@ -76,6 +79,7 @@ include 'includes/header.php';
         <?php endif; ?>
 
         <form method="POST" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <?php echo getCsrfField(); ?>
             <div class="form-group">
                 <label for="voucher_code">Voucher Code</label>
                 <div style="position: relative;">

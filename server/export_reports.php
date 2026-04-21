@@ -1,38 +1,43 @@
-require_once 'includes/db.php';
-require_once 'vendor/autoload.php';
-
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+<?php
+require_once __DIR__ . '/includes/auth.php';
+requireLogin();
+validateCsrfToken();
+require_once __DIR__ . '/includes/db.php';
 
 $filter = $_POST['filter'] ?? 'daily';
+$search = trim($_POST['search'] ?? '');
+$start_date = trim($_POST['start_date'] ?? '');
+$end_date = trim($_POST['end_date'] ?? '');
 $reportService = new ReportService($pdo);
 
 try {
-    $report_data = $reportService->getRedemptionReport($filter);
+    $report_data = $reportService->getRedemptionReport($filter, $search, null, null, $start_date, $end_date);
 } catch (Exception $e) {
     die("Export failed: " . $e->getMessage());
 }
 
-$spreadsheet = new Spreadsheet();
-$sheet = $spreadsheet->getActiveSheet();
-$sheet->fromArray(['Student Name', 'Student ID', 'Voucher Code', 'Date Redeemed'], NULL, 'A1');
+$filename = "voucher_report_{$filter}_" . date('Ymd_His') . ".csv";
 
-$rowNum = 2;
+header('Content-Type: text/csv; charset=utf-8');
+header("Content-Disposition: attachment;filename=\"$filename\"");
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+
+$output = fopen('php://output', 'w');
+
+// UTF-8 BOM so Excel opens CSV with proper encoding.
+fwrite($output, "\xEF\xBB\xBF");
+
+fputcsv($output, ['Student Name', 'Student ID', 'Voucher Code', 'Date Redeemed']);
+
 foreach ($report_data as $row) {
-    $sheet->setCellValue("A{$rowNum}", $row['student_name']);
-    $sheet->setCellValue("B{$rowNum}", $row['student_id']);
-    $sheet->setCellValue("C{$rowNum}", $row['voucher_code']);
-    $sheet->setCellValue("D{$rowNum}", $row['redeemed_at']); 
-    $rowNum++;
+    fputcsv($output, [
+        $row['student_name'] ?? '',
+        $row['student_id'] ?? '',
+        $row['voucher_code'] ?? '',
+        $row['redeemed_at'] ?? ''
+    ]);
 }
 
-$filename = "voucher_report_{$filter}_" . date('Ymd_His') . ".xlsx";
-
-header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header("Content-Disposition: attachment;filename=\"$filename\"");
-header('Cache-Control: max-age=0');
-
-$writer = new Xlsx($spreadsheet);
-$writer->save('php://output');
+fclose($output);
 exit;
-?>

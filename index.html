@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISU Voucher System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="client/assets/css/main.css">
+    <style>
+        .landing-page {
+            min-height: 100vh;
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%), url('client/background.jpg');
+            background-size: cover;
+            background-blend-mode: overlay;
+            padding: 2rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .landing-wrap {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .landing-hero {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .landing-hero h1 {
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.01em;
+        }
+
+        .landing-hero p {
+            opacity: 0.92;
+            font-size: 1rem;
+        }
+
+        .portal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .portal-card {
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.94);
+        }
+
+        .portal-card .icon {
+            width: 56px;
+            height: 56px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            background: rgba(72, 187, 120, 0.14);
+            color: var(--primary-color);
+        }
+
+        .portal-card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        .portal-card p {
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+
+        .portal-card .cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .landing-note {
+            margin-top: 1rem;
+            background: rgba(255, 255, 255, 0.94);
+        }
+
+        .landing-note h3 {
+            color: var(--primary-color);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .landing-note ol {
+            margin-left: 1.1rem;
+            color: var(--text-muted);
+            font-size: 0.93rem;
+            line-height: 1.7;
+        }
+
+        @media (max-width: 768px) {
+            .portal-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="landing-page">
+        <div class="landing-wrap">
+            <section class="landing-hero">
+                <h1>ISU Voucher System</h1>
+                <p>RFID-based student voucher redemption platform</p>
+            </section>
+
+            <section class="portal-grid">
+                <a href="client/rfid.php" class="card portal-card">
+                    <div class="icon"><i class="fas fa-id-card"></i></div>
+                    <h2>Student Portal</h2>
+                    <p>Public RFID scanner for voucher redemption and student verification.</p>
+                    <span class="btn btn-primary cta">Open Scanner <i class="fas fa-arrow-right"></i></span>
+                </a>
+
+                <a href="client/login.php" class="card portal-card">
+                    <div class="icon"><i class="fas fa-user-shield"></i></div>
+                    <h2>Admin Portal</h2>
+                    <p>Manage vouchers, student records, accounts, and redemption reports.</p>
+                    <span class="btn btn-primary cta">Admin Login <i class="fas fa-arrow-right"></i></span>
+                </a>
+            </section>
+
+            <section class="card landing-note">
+                <h3>Quick Flow</h3>
+                <ol>
+                    <li>Students scan RFID in the Student Portal.</li>
+                    <li>System validates identity and voucher limits.</li>
+                    <li>Voucher is issued and logged in records.</li>
+                    <li>Admins monitor and export reports from dashboard.</li>
+                </ol>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

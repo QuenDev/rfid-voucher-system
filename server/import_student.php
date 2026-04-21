@@ -1,19 +1,19 @@
 <?php
 session_start();
-require "config.php";
-require 'vendor/autoload.php';
-
-use PhpOffice\PhpSpreadsheet\IOFactory;
+require_once __DIR__ . "/includes/auth.php";
+requireLogin();
+require_once __DIR__ . "/includes/db.php";
+require_once __DIR__ . '/includes/simple_spreadsheet_reader.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     $file = $_FILES['excel_file']['tmp_name'];
 
     try {
-        $spreadsheet = IOFactory::load($file);
-        $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray();
+        $rows = loadSpreadsheetRows($file, $_FILES['excel_file']['name'] ?? '');
 
-        $studentService = new StudentService($pdo);
+        $admin_id = $_SESSION['admin_id'] ?? null;
+        $auditService = new AuditService($pdo);
+        $studentService = new StudentService($pdo, $auditService, $admin_id);
         $pdo->beginTransaction();
 
         $importedCount = 0;
@@ -25,16 +25,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             $row = array_pad($row, 9, ''); 
             [$student_id, $last_name, $first_name, $middle_name, $sex, $course, $year, $section, $rfid] = $row;
 
+            $student_id = trim((string)$student_id);
+            $last_name = trim((string)$last_name);
+            $first_name = trim((string)$first_name);
+            $middle_name = trim((string)$middle_name);
+            $sex = strtoupper(trim((string)$sex));
+            $course = trim((string)$course);
+            $year = trim((string)$year);
+            $section = trim((string)$section);
+            $rfid = trim((string)$rfid);
+
             if (empty($student_id) || empty($last_name) || empty($first_name) || !in_array($sex, ['M', 'F'])) {
                 continue; 
             }
 
             // Check for duplicates
-            // We can add a more efficient method to StudentService later if needed
-            $existing = $studentService->getByRFID($rfid);
+            $existing = false;
+
+            // Only check RFID duplicate if RFID is actually provided.
+            if ($rfid !== '') {
+                $existing = $studentService->getByRFID($rfid);
+            }
+
             if (!$existing) {
-                // Also check ID
-                $stmt = $pdo->prepare("SELECT id FROM users WHERE student_id = ?");
+                // Check active student_id duplicate.
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE student_id = ? AND deleted_at IS NULL");
                 $stmt->execute([$student_id]);
                 $existing = $stmt->fetch();
             }
@@ -45,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             }
 
             $studentService->create([
-                'rfid' => $rfid,
+                'rfid' => $rfid !== '' ? $rfid : null,
                 'student_id' => $student_id,
                 'last_name' => $last_name,
                 'first_name' => $first_name,
@@ -67,5 +82,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     }
 }
 
-header("Location: students.php");
+header("Location: ../client/students.php");
 exit();

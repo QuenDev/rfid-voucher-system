@@ -6,19 +6,30 @@ require_once '../server/includes/functions.php';
 // Security Guard
 requireLogin();
 
-$admin_id = $_SESSION['admin_id'];
-$accountService = new AccountService($pdo);
+$admin_id = $_SESSION['admin_id'] ?? null;
+$auditService = new AuditService($pdo);
+$accountService = new AccountService($pdo, $auditService, $admin_id);
 
+// Get filter and search inputs
 $search = $_GET['search'] ?? '';
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+if ($page < 1) $page = 1;
+$limit = 15;
+$offset = ($page - 1) * $limit;
+
 try {
-    $accounts = $accountService->getAll($search);
+    $total_records = $accountService->getTotalCount($search);
+    $total_pages = ceil($total_records / $limit);
+    $accounts = $accountService->getAll($search, $limit, $offset);
 } catch (Exception $e) {
     $error = "Error fetching accounts: " . $e->getMessage();
     $accounts = [];
+    $total_pages = 0;
 }
 
 // Handle delete
 if (isset($_POST['confirm_delete'])) {
+    validateCsrfToken();
     $account_id = $_POST['account_id'];
     
     // Prevent deleting self
@@ -61,18 +72,7 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Messages -->
-    <?php if (isset($_SESSION['delete_success'])): ?>
-        <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.75rem;">
-            <i class="fas fa-check-circle"></i>
-            <?= $_SESSION['delete_success']; unset($_SESSION['delete_success']); ?>
-        </div>
-    <?php elseif (isset($_SESSION['delete_error'])): ?>
-        <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.75rem;">
-            <i class="fas fa-exclamation-circle"></i>
-            <?= $_SESSION['delete_error']; unset($_SESSION['delete_error']); ?>
-        </div>
-    <?php endif; ?>
+    <?php include 'includes/alerts.php'; ?>
 
     <!-- Accounts Table -->
     <div class="card" style="padding: 0;">
@@ -117,6 +117,7 @@ include 'includes/header.php';
                                         </a>
                                         <?php if ($row['id'] != $admin_id): ?>
                                             <form method="POST" action="accounts.php" style="display:inline;">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="account_id" value="<?= $row['id'] ?>">
                                                 <button type="submit" name="confirm_delete" class="btn" style="padding: 6px; background: #fff5f5; color: #e53e3e;" onclick="return confirm('Permanently delete this account?')" title="Delete Account">
                                                     <i class="fas fa-trash-alt"></i>
@@ -139,6 +140,32 @@ include 'includes/header.php';
             </table>
         </div>
     </div>
+
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; background: white; padding: 1rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+        <div style="font-size: 0.9rem; color: var(--text-muted);">
+            Showing <?= count($accounts) ?> of <?= $total_records ?> accounts
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;"><i class="fas fa-chevron-left"></i> Previous</a>
+            <?php endif; ?>
+            
+            <?php
+            $start = max(1, $page - 2);
+            $end = min($total_pages, $page + 2);
+            for ($i = $start; $i <= $end; $i++):
+            ?>
+                <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>" class="btn" style="background: <?= ($i == $page) ? 'var(--accent-color)' : '#edf2f7' ?>; color: <?= ($i == $page) ? 'white' : 'var(--text-main)' ?>; font-size: 0.85rem; padding: 6px 12px;"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $total_pages): ?>
+                <a href="?page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;">Next <i class="fas fa-chevron-right"></i></a>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php include 'includes/footer.php'; ?>

@@ -12,25 +12,27 @@ $reportService = new ReportService($pdo);
 // Get filter and search inputs
 $filter = $_GET['filter'] ?? 'daily';
 $search = $_GET['search'] ?? '';
+$start_date = $_GET['start_date'] ?? '';
+$end_date = $_GET['end_date'] ?? '';
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+if ($page < 1) $page = 1;
+$limit = 15;
+$offset = ($page - 1) * $limit;
 
 try {
-    $report_data = $reportService->getRedemptionReport($filter);
-    
-    // Manual search filtering
-    if ($search) {
-        $report_data = array_filter($report_data, function($row) use ($search) {
-            return strpos(strtolower($row['student_name']), strtolower($search)) !== false || 
-                   strpos(strtolower($row['student_id']), strtolower($search)) !== false ||
-                   strpos(strtolower($row['voucher_code']), strtolower($search)) !== false;
-        });
-    }
+    $total_records = $reportService->getRedemptionCount($filter, $search, $start_date, $end_date);
+    $total_pages = ceil($total_records / $limit);
+    $report_data = $reportService->getRedemptionReport($filter, $search, $limit, $offset, $start_date, $end_date);
 } catch (Exception $e) {
     $error = "Error generating report: " . $e->getMessage();
     $report_data = [];
+    $total_pages = 0;
 }
 
 $pageTitle = "Redemption Reports";
 include 'includes/header.php';
+
+$appBase = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/');
 ?>
 
 <div style="display: flex; flex-direction: column; gap: 2rem;">
@@ -64,13 +66,14 @@ include 'includes/header.php';
                 </div>
             </form>
 
-            <form method="POST" action="export_reports.php">
+            <form method="POST" action="<?= htmlspecialchars($appBase . '/server/export_reports.php') ?>">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="filter" value="<?= htmlspecialchars($filter) ?>">
                 <input type="hidden" name="search" value="<?= htmlspecialchars($search) ?>">
                 <input type="hidden" name="start_date" value="<?= htmlspecialchars($start_date) ?>">
                 <input type="hidden" name="end_date" value="<?= htmlspecialchars($end_date) ?>">
                 <button type="submit" class="btn" style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;">
-                    <i class="fas fa-file-excel"></i> Export to Excel
+                    <i class="fas fa-file-csv"></i> Export CSV
                 </button>
             </form>
         </div>
@@ -112,6 +115,32 @@ include 'includes/header.php';
             </table>
         </div>
     </div>
+
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; background: white; padding: 1rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+        <div style="font-size: 0.9rem; color: var(--text-muted);">
+            Showing <?= count($report_data) ?> of <?= $total_records ?> redemptions
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>&filter=<?= urlencode($filter) ?>&search=<?= urlencode($search) ?>&start_date=<?= urlencode($start_date) ?>&end_date=<?= urlencode($end_date) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;"><i class="fas fa-chevron-left"></i> Previous</a>
+            <?php endif; ?>
+            
+            <?php
+            $start = max(1, $page - 2);
+            $end = min($total_pages, $page + 2);
+            for ($i = $start; $i <= $end; $i++):
+            ?>
+                <a href="?page=<?= $i ?>&filter=<?= urlencode($filter) ?>&search=<?= urlencode($search) ?>&start_date=<?= urlencode($start_date) ?>&end_date=<?= urlencode($end_date) ?>" class="btn" style="background: <?= ($i == $page) ? 'var(--accent-color)' : '#edf2f7' ?>; color: <?= ($i == $page) ? 'white' : 'var(--text-main)' ?>; font-size: 0.85rem; padding: 6px 12px;"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $total_pages): ?>
+                <a href="?page=<?= $page + 1 ?>&filter=<?= urlencode($filter) ?>&search=<?= urlencode($search) ?>&start_date=<?= urlencode($start_date) ?>&end_date=<?= urlencode($end_date) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;">Next <i class="fas fa-chevron-right"></i></a>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <style>

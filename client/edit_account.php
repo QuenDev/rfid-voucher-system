@@ -15,7 +15,9 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 }
 
 $id = intval($_GET['id']);
-$accountService = new AccountService($pdo);
+$admin_id = $_SESSION['admin_id'] ?? null;
+$auditService = new AuditService($pdo);
+$accountService = new AccountService($pdo, $auditService, $admin_id);
 $account = $accountService->getById($id);
 
 if (!$account) {
@@ -25,6 +27,7 @@ if (!$account) {
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    validateCsrfToken();
     $fullname = trim($_POST['fullname']);
     $username = trim($_POST['username']);
     $office = trim($_POST['office']);
@@ -93,6 +96,7 @@ include 'includes/header.php';
         <?php endif; ?>
 
         <form method="POST" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <?php echo getCsrfField(); ?>
             <div class="form-group">
                 <label for="fullname">Full Name</label>
                 <input type="text" name="fullname" id="fullname" class="form-control" value="<?= htmlspecialchars($account['fullname']) ?>" required>

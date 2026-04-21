@@ -16,12 +16,8 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 $student_id = intval($_GET['id']);
 
 // Fetch the student details
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->bind_param("i", $student_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$student = $result->fetch_assoc();
-$stmt->close();
+$studentService = new StudentService($pdo);
+$student = $studentService->getById($student_id);
 
 if (!$student) {
     header("Location: students.php");

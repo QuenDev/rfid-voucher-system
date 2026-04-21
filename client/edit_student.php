@@ -6,8 +6,9 @@ require_once '../server/includes/functions.php';
 // Security Guard
 requireLogin();
 
-$admin_id = $_SESSION['admin_id'];
-$studentService = new StudentService($pdo);
+$admin_id = $_SESSION['admin_id'] ?? null;
+$auditService = new AuditService($pdo);
+$studentService = new StudentService($pdo, $auditService, $admin_id);
 
 // Get the student ID from URL
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
@@ -23,6 +24,7 @@ if (!$student) {
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    validateCsrfToken();
     $data = [
         'rfid' => trim($_POST['rfid']),
         'student_id' => trim($_POST['student_id']),
@@ -32,21 +34,37 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'sex' => $_POST['sex'],
         'course' => trim($_POST['course']),
         'year' => intval($_POST['year']),
-        'section' => trim($_POST['section'])
+        'section' => trim($_POST['section']),
+        'picture' => $student['picture'] ?? null
     ];
 
     // Handle picture upload
     if (isset($_FILES['picture']) && $_FILES['picture']['error'] == UPLOAD_ERR_OK) {
         $upload_dir = 'uploads/';
-        $new_filename = uniqid() . "_" . basename($_FILES["picture"]["name"]);
-        $target_file = $upload_dir . $new_filename;
+        $filename = basename($_FILES["picture"]["name"]);
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
 
-        if (move_uploaded_file($_FILES["picture"]["tmp_name"], $target_file)) {
-            // Remove old picture if it exists
-            if (!empty($student['picture']) && file_exists($upload_dir . $student['picture'])) {
-                unlink($upload_dir . $student['picture']);
+        if (!in_array($ext, $allowed)) {
+            $error = "Invalid file extension.";
+        } else {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $_FILES['picture']['tmp_name']);
+            
+            if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'])) {
+                $error = "Invalid image content.";
+            } else {
+                $new_filename = uniqid() . "." . $ext;
+                $target_file = $upload_dir . $new_filename;
+
+                if (move_uploaded_file($_FILES["picture"]["tmp_name"], $target_file)) {
+                    // Remove old picture if it exists
+                    if (!empty($student['picture']) && file_exists($upload_dir . $student['picture'])) {
+                        unlink($upload_dir . $student['picture']);
+                    }
+                    $data['picture'] = $new_filename;
+                }
             }
-            $data['picture'] = $new_filename; 
         }
     }
 
@@ -89,6 +107,7 @@ include 'includes/header.php';
         <?php endif; ?>
 
         <form method="POST" enctype="multipart/form-data">
+            <?php echo getCsrfField(); ?>
             <div style="display: flex; justify-content: center; margin-bottom: 2.5rem;">
                 <div style="position: relative; width: 120px; height: 120px;">
                     <?php if (!empty($student['picture'])): ?>

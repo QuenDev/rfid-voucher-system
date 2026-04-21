@@ -10,7 +10,10 @@ $admin_id = $_SESSION['admin_id'];
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $studentService = new StudentService($pdo);
+    validateCsrfToken();
+    $admin_id = $_SESSION['admin_id'] ?? null;
+    $auditService = new AuditService($pdo);
+    $studentService = new StudentService($pdo, $auditService, $admin_id);
     
     $data = [
         'rfid' => trim($_POST['rfid']),
@@ -29,18 +32,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (isset($_FILES['picture']) && $_FILES['picture']['error'] === UPLOAD_ERR_OK) {
         $uploadDir = "uploads/";
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0755, true);
         }
 
         $filename = basename($_FILES['picture']['name']);
-        $ext = pathinfo($filename, PATHINFO_EXTENSION);
-        $newFilename = uniqid() . "." . $ext;
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
 
+        if (!in_array($ext, $allowed)) {
+            $_SESSION['add_error'] = "Invalid file extension. Only JPG, PNG, and WebP are allowed.";
+            header("Location: add_student.php");
+            exit();
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = finfo_file($finfo, $_FILES['picture']['tmp_name']);
+        if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'])) {
+            $_SESSION['add_error'] = "Invalid image content.";
+            header("Location: add_student.php");
+            exit();
+        }
+
+        $newFilename = uniqid() . "." . $ext;
         $uploadPath = $uploadDir . $newFilename;
+
         if (move_uploaded_file($_FILES['picture']['tmp_name'], $uploadPath)) {
             $data['picture'] = $newFilename;
         }
-    }	
+    }
 
     try {
         if ($studentService->create($data)) {
@@ -70,20 +89,10 @@ include 'includes/header.php';
             <p style="color: var(--text-muted); font-size: 0.95rem;">Enter student details to register them in the system.</p>
         </div>
 
-        <!-- Messages -->
-        <?php if (isset($_SESSION['add_success'])): ?>
-            <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
-                <i class="fas fa-check-circle"></i> <?= $_SESSION['add_success']; unset($_SESSION['add_success']); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if (isset($_SESSION['add_error'])): ?>
-            <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
-                <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['add_error']; unset($_SESSION['add_error']); ?>
-            </div>
-        <?php endif; ?>
+        <?php include 'includes/alerts.php'; ?>
 
         <form method="POST" action="add_student.php" enctype="multipart/form-data">
+            <?php echo getCsrfField(); ?>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
                 <!-- Left Column -->
                 <div style="display: flex; flex-direction: column; gap: 1.5rem;">

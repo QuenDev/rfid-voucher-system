@@ -1,66 +1,111 @@
-# 🎫 RFID-Based Student Voucher System
+# RFID-Based Student Voucher System
 
-[![GitHub License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg?style=flat&logo=php)](https://www.php.net/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4.svg?style=flat&logo=php)](https://www.php.net/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1.svg?style=flat&logo=mysql)](https://www.mysql.com/)
 
-A modern, high-efficiency web application designed to automate the distribution of internet vouchers in university environments using RFID technology. This system eliminates manual tracking and ensures fair, secure access to network resources for students.
+Feature-focused RFID voucher redemption system built for academic use and portfolio showcase.
 
----
+## Project Status
 
-## 🚀 Key Features
+- Completed as a local/internal system (XAMPP environment).
+- Not deployed publicly.
+- Primary goal: demonstrate end-to-end features and workflow.
 
-- **⚡ Real-Time RFID Integration**: Instant student identification and voucher issuance via RFID card simulation (Keyboard Emulation).
-- **📊 Comprehensive Admin Dashboard**: Live monitoring of system statistics, including total students, voucher availability, and redemption progress bars.
-- **👤 Student Management System**: Complete records management with automated photo uploads and CSV import capabilities.
-- **🎟️ Voucher Lifecycle Management**: Secure importation and tracking of internet vouchers with automated status updates (Available/Used).
-- **📝 Automated Reporting**: Detailed logs of daily redemptions and system-wide audits, exportable for administrative review.
-- **🛡️ Security & Authentication**: Secure admin login system with session management and encrypted activity logging.
+## Scope (Important)
 
----
+This project is currently intended for:
 
-## 🛠️ Technical Stack
+- classroom/demo use
+- local/internal testing
+- portfolio presentation
 
-- **Backend**: PHP (Procedural/OOP)
-- **Database**: MySQL (Relational Schema with Foreign Key Constraints)
-- **Frontend**: HTML5, CSS3 (Modern Flexbox/Grid layouts), JavaScript (Vanilla, Fetch API)
-- **Icons**: Font Awesome 6
-- **Hardware Support**: Compatible with standard USB RFID Readers
+It is **not yet production-hardened** for internet exposure.
 
----
+## Core Features
 
-## 📸 Core Modules
+- Public student RFID scanning page
+- Admin login and dashboard
+- Student photo display after successful RFID scan
+- Voucher redemption with anti-spam limits
+  - max 2 vouchers per 60 minutes
+  - max 2 vouchers per day
+- Student management
+  - add, edit, view, delete (soft delete)
+  - import students
+- Voucher management
+  - add, edit, delete (soft delete)
+  - import vouchers
+- Reports module
+  - filtered redemption records
+  - CSV export
 
-### 📍 Student Scanning Interface
-The primary interface for students. Upon tapping an RFID card, the system instantly displays the student's photo, name, and their uniquely assigned voucher code.
+## Tech Stack
 
-### 📈 Analytics Dashboard
-Provides administrators with a bird's-eye view of connectivity metrics, allowing for efficient resource planning and usage monitoring.
+- PHP (procedural + service-class OOP style)
+- MySQL / MariaDB
+- HTML/CSS/JavaScript (vanilla)
+- Font Awesome
+- XAMPP (Apache + MySQL)
 
----
+## Entry Points
 
-## 🔧 Installation & Setup
+- Home/Landing: `index.html`
+- Public RFID Scanner: `client/rfid.php`
+- Admin Login: `client/login.php`
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/QuenDev/rfid-voucher-system.git
-   ```
+## Local Setup
 
-2. **Database Configuration**:
-   - Create a database named `university_voucher_system`.
-   - Import the `university_voucher_schema.sql` file.
-   - Update `config.php` with your database credentials.
+1. Clone repository:
 
-3. **Web Server**:
-   - Deploy to a PHP-enabled server (XAMPP, WAMP, or Linux Apache).
-   - Ensure the `uploads/` directory has write permissions.
+```bash
+git clone <your-repo-url>
+```
 
----
+2. Put project inside XAMPP `htdocs`:
 
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
+`D:\xampp\htdocs\rfid-student-voucher-system`
 
----
+3. Create database:
 
-## 📄 License
-This project is licensed under the MIT License.
+- DB name: `university_voucher_system`
+- Import: `Database Files/university_voucher_system.sql`
+
+4. Configure `.env`:
+
+- Copy `.env.example` to `.env`
+- Set:
+  - `DB_HOST`
+  - `DB_USER`
+  - `DB_PASS`
+  - `DB_NAME`
+
+5. Start Apache + MySQL in XAMPP.
+
+## Import / Export Notes
+
+- Student and voucher imports accept `.xlsx` and `.csv`.
+- Reports export is `.csv` (Excel-compatible).
+- If `.xlsx` import fails due to ZIP support:
+  - open `D:\xampp\php\php.ini`
+  - ensure `extension=zip` is enabled
+  - restart Apache
+
+## Portfolio Demo Flow (Suggested)
+
+1. Login as admin
+2. Import students
+3. Import vouchers
+4. Open public RFID page and scan student RFID
+5. Show student photo + issued voucher
+6. Open reports and export CSV
+
+## Current Limitations
+
+- Built as a local/internal app first, not cloud-deployed.
+- Security hardening and production deployment pipeline are future improvements.
+- Spreadsheet support depends on local PHP extension/runtime configuration.
+
+## License
+
+MIT

@@ -10,7 +10,10 @@ $admin_id = $_SESSION['admin_id'];
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $voucherService = new VoucherService($pdo);
+    validateCsrfToken();
+    $admin_id = $_SESSION['admin_id'] ?? null;
+    $auditService = new AuditService($pdo);
+    $voucherService = new VoucherService($pdo, $auditService, $admin_id);
     
     $data = [
         'voucher_code' => trim($_POST['voucher_code']),
@@ -50,18 +53,10 @@ include 'includes/header.php';
             <p style="color: var(--text-muted); font-size: 0.95rem;">Issue a single voucher manually for a specific purpose or office.</p>
         </div>
 
-        <!-- Messages -->
-        <?php if (isset($_SESSION['add_success'])): ?>
-            <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
-                <i class="fas fa-check-circle"></i> <?= $_SESSION['add_success']; unset($_SESSION['add_success']); ?>
-            </div>
-        <?php elseif (isset($_SESSION['add_error'])): ?>
-            <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1.25rem; border-radius: var(--radius-sm); margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
-                <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['add_error']; unset($_SESSION['add_error']); ?>
-            </div>
-        <?php endif; ?>
+        <?php include 'includes/alerts.php'; ?>
 
         <form method="POST" action="add.php" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <?php echo getCsrfField(); ?>
             <div class="form-group">
                 <label for="voucher_code">Voucher Code</label>
                 <div style="position: relative;">

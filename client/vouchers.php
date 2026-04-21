@@ -6,11 +6,13 @@ require_once '../server/includes/functions.php';
 // Security Guard
 requireLogin();
 
-$voucherService = new VoucherService($pdo);
-$admin_id = $_SESSION['admin_id'];
+$admin_id = $_SESSION['admin_id'] ?? null;
+$auditService = new AuditService($pdo);
+$voucherService = new VoucherService($pdo, $auditService, $admin_id);
 
 // Handle voucher delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_voucher'])) {
+    validateCsrfToken();
     $voucher_id = $_POST['voucher_id'];
     if ($voucherService->delete($voucher_id)) {
         $_SESSION['success_message'] = "Voucher #$voucher_id deleted successfully.";
@@ -23,12 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_voucher'])) {
 
 // Handle voucher update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_voucher'])) {
+    validateCsrfToken();
     $voucher_id = $_POST['voucher_id'];
     $voucher_code = $_POST['voucher_code'];
     $office = $_POST['office_department'];
     $minutes = $_POST['minutes_valid'];
 
-    if ($voucherService->update($voucher_id, $voucher_code, $office, $minutes)) {
+    if ($voucherService->update($voucher_id, [
+        'voucher_code' => $voucher_code,
+        'office_department' => $office,
+        'minutes_valid' => $minutes
+    ])) {
         $_SESSION['success_message'] = "Voucher #$voucher_id updated successfully.";
     } else {
         $_SESSION['error_message'] = "Failed to update voucher.";
@@ -37,23 +44,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_voucher'])) {
     exit();
 }
 
-// Filters
-$filters = [
-    'search' => $_GET['search'] ?? '',
-    'status' => $_GET['status'] ?? ''
-];
-
-$search = $filters['search'];
-$status_filter = $filters['status'];
+// Filters & Pagination
+$search = $_GET['search'] ?? '';
+$status_filter = $_GET['status'] ?? '';
 $from_date = $_GET['from_date'] ?? '';
 $to_date = $_GET['to_date'] ?? '';
 $edit_id = $_GET['edit_id'] ?? null;
 
-// Temporary: Support date filters in service if needed, but for now we'll use GetAll
-$voucher_list = $voucherService->getAll($filters);
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+if ($page < 1) $page = 1;
+$limit = 15;
+$offset = ($page - 1) * $limit;
+
+$filters = [
+    'search' => $search,
+    'status' => $status_filter,
+    'from_date' => $from_date,
+    'to_date' => $to_date
+];
+
+$total_records = $voucherService->getTotalCount($filters);
+$total_pages = ceil($total_records / $limit);
+$voucher_list = $voucherService->getAll($filters, $limit, $offset);
 
 $pageTitle = "Voucher Management";
 include 'includes/header.php';
+
+$appBase = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/');
 ?>
 
 <div style="display: flex; flex-direction: column; gap: 2rem;">
@@ -68,8 +85,8 @@ include 'includes/header.php';
                 
                 <select name="status" class="form-control" style="width: auto; min-width: 150px;">
                     <option value="">All Status</option>
-                    <option value="Available" <?= $status_filter == 'Available' ? 'selected' : '' ?>>Available</option>
-                    <option value="Used" <?= $status_filter == 'Used' ? 'selected' : '' ?>>Used</option>
+                    <option value="available" <?= strtolower((string)$status_filter) === 'available' ? 'selected' : '' ?>>Available</option>
+                    <option value="used" <?= strtolower((string)$status_filter) === 'used' ? 'selected' : '' ?>>Used</option>
                 </select>
 
                 <div style="display: flex; align-items: center; gap: 0.5rem; background: #f7fafc; padding: 0.25rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0;">
@@ -97,10 +114,10 @@ include 'includes/header.php';
 
         <div id="import-section" class="hidden" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #edf2f7;">
             <div style="background: #f0fdf4; border: 1px dashed var(--accent-color); padding: 1.5rem; border-radius: var(--radius-md);">
-                <form action="../server/import_voucher.php" method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <form action="<?= htmlspecialchars($appBase . '/server/import_voucher.php') ?>" method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
                     <div style="flex: 1;">
-                        <label for="excel" style="display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem;">Import Vouchers (.xls, .xlsx)</label>
-                        <input type="file" name="excel_file" id="excel" accept=".xls,.xlsx" required class="form-control" style="background: white;">
+                        <label for="excel" style="display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem;">Import Vouchers (.xlsx, .csv)</label>
+                        <input type="file" name="excel_file" id="excel" accept=".xlsx,.csv,.xls" required class="form-control" style="background: white;">
                     </div>
                     <button type="submit" class="btn btn-primary" style="align-self: flex-end;">Upload & Import</button>
                 </form>
@@ -108,19 +125,7 @@ include 'includes/header.php';
         </div>
     </div>
 
-    <!-- Messages -->
-    <?php if (isset($_SESSION['success_message']) || isset($_SESSION['import_success'])): ?>
-        <div style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.75rem;">
-            <i class="fas fa-check-circle"></i>
-            <?= $_SESSION['success_message'] ?? $_SESSION['import_success']; unset($_SESSION['success_message'], $_SESSION['import_success']); ?>
-        </div>
-    <?php endif; ?>
-    <?php if (isset($_SESSION['error_message']) || isset($_SESSION['import_error'])): ?>
-        <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.75rem;">
-            <i class="fas fa-exclamation-circle"></i>
-            <?= $_SESSION['error_message'] ?? $_SESSION['import_error']; unset($_SESSION['error_message'], $_SESSION['import_error']); ?>
-        </div>
-    <?php endif; ?>
+    <?php include 'includes/alerts.php'; ?>
 
     <!-- Vouchers Table -->
     <div class="card" style="padding: 0;">
@@ -143,6 +148,7 @@ include 'includes/header.php';
                             <?php if ($edit_id == $voucher['id']): ?>
                                 <tr style="background: #fffaf0;">
                                     <form method="POST" action="vouchers.php">
+                                        <?php echo getCsrfField(); ?>
                                         <td style="color: var(--text-muted);"><?= $voucher['id'] ?><input type="hidden" name="voucher_id" value="<?= $voucher['id'] ?>"></td>
                                         <td><input type="text" name="voucher_code" class="form-control" value="<?= htmlspecialchars($voucher['voucher_code']) ?>" required style="padding: 4px 8px; font-size: 0.9rem;"></td>
                                         <td><input type="text" name="office_department" class="form-control" value="<?= htmlspecialchars($voucher['office_department']) ?>" required style="padding: 4px 8px; font-size: 0.9rem;"></td>
@@ -166,9 +172,9 @@ include 'includes/header.php';
                                     <td style="text-align: center;"><span style="font-size: 0.85rem;"><?= htmlspecialchars($voucher['minutes_valid']) ?> mins</span></td>
                                     <td style="text-align: center;">
                                         <?php if (strtolower($voucher['status']) === 'used'): ?>
-                                            <span style="display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; background: #fff5f5; color: #c53030; border: 1px solid #feb2b2;">USED</span>
+                                            <span class="badge badge-used">USED</span>
                                         <?php else: ?>
-                                            <span style="display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;">AVAILABLE</span>
+                                            <span class="badge badge-available">AVAILABLE</span>
                                         <?php endif; ?>
                                     </td>
                                     <td style="text-align: right;">
@@ -177,6 +183,7 @@ include 'includes/header.php';
                                                 <i class="fas fa-pencil-alt"></i>
                                             </a>
                                             <form method="POST" action="vouchers.php" style="display:inline;">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="voucher_id" value="<?= $voucher['id'] ?>">
                                                 <button type="submit" name="delete_voucher" class="btn" style="padding: 6px; background: #fff5f5; color: #e53e3e;" onclick="return confirm('Delete this voucher record?')" title="Delete">
                                                     <i class="fas fa-trash-alt"></i>
@@ -199,11 +206,33 @@ include 'includes/header.php';
             </table>
         </div>
     </div>
+
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; background: white; padding: 1rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+        <div style="font-size: 0.9rem; color: var(--text-muted);">
+            Showing <?= count($voucher_list) ?> of <?= $total_records ?> vouchers
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($status_filter) ?>&from_date=<?= urlencode($from_date) ?>&to_date=<?= urlencode($to_date) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;"><i class="fas fa-chevron-left"></i> Previous</a>
+            <?php endif; ?>
+            
+            <?php
+            $start = max(1, $page - 2);
+            $end = min($total_pages, $page + 2);
+            for ($i = $start; $i <= $end; $i++):
+            ?>
+                <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($status_filter) ?>&from_date=<?= urlencode($from_date) ?>&to_date=<?= urlencode($to_date) ?>" class="btn" style="background: <?= ($i == $page) ? 'var(--accent-color)' : '#edf2f7' ?>; color: <?= ($i == $page) ? 'white' : 'var(--text-main)' ?>; font-size: 0.85rem; padding: 6px 12px;"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $total_pages): ?>
+                <a href="?page=<?= $page + 1 ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($status_filter) ?>&from_date=<?= urlencode($from_date) ?>&to_date=<?= urlencode($to_date) ?>" class="btn" style="background: #edf2f7; color: var(--text-main); font-size: 0.85rem;">Next <i class="fas fa-chevron-right"></i></a>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
-<style>
-.hidden { display: none !important; }
-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-</style>
 
 <?php include 'includes/footer.php'; ?>

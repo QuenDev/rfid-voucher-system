@@ -12,7 +12,11 @@ if (session_status() === PHP_SESSION_NONE) {
  */
 function requireLogin() {
     if (!isset($_SESSION['admin_id'])) {
-        header("Location: login.php");
+        if (strpos($_SERVER['PHP_SELF'], '/client/') !== false || strpos($_SERVER['PHP_SELF'], '\\client\\') !== false) {
+            header("Location: login.php");
+        } else {
+            header("Location: ../client/login.php");
+        }
         exit();
     }
 }
@@ -40,6 +44,37 @@ function logout() {
         );
     }
     session_destroy();
-    header("Location: login.php");
+    // Redirect to login page (handled by client directory)
+    if (strpos($_SERVER['PHP_SELF'], '/client/') !== false) {
+        header("Location: login.php");
+    } else {
+        header("Location: ../client/login.php");
+    }
     exit();
+}
+
+/**
+ * CSRF Protection Helpers
+ */
+function getCsrfToken() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function getCsrfField() {
+    return '<input type="hidden" name="csrf_token" value="' . getCsrfToken() . '">';
+}
+
+function validateCsrfToken($token = null) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if ($token === null) {
+            $token = $_POST['csrf_token'] ?? '';
+        }
+        if (empty($token) || $token !== ($_SESSION['csrf_token'] ?? '')) {
+            die("Security error: CSRF validation failed. Please try again.");
+        }
+    }
+    return true;
 }

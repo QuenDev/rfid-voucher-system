@@ -39,7 +39,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </li>
     </ul>
     <div class="sidebar-footer" style="padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
-        <a href="../server/logout.php" class="nav-link" style="color: #feb2b2;">
+        <a href="logout.php" class="nav-link" style="color: #feb2b2;">
             <i class="fas fa-sign-out-alt"></i>
             <span>Logout</span>
         </a>

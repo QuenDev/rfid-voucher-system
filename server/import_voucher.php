@@ -1,27 +1,47 @@
 <?php
 session_start();
-require 'config.php';
-require 'vendor/autoload.php'; // PhpSpreadsheet autoload
-
-use PhpOffice\PhpSpreadsheet\IOFactory;
+require_once __DIR__ . '/includes/auth.php';
+requireLogin();
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/simple_spreadsheet_reader.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] == 0) {
         $fileTmpPath = $_FILES['excel_file']['tmp_name'];
 
         try {
-            $spreadsheet = IOFactory::load($fileTmpPath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
+            $rows = loadSpreadsheetRows($fileTmpPath, $_FILES['excel_file']['name'] ?? '');
 
-            $voucherService = new VoucherService($pdo);
+            $admin_id = $_SESSION['admin_id'] ?? null;
+            $auditService = new AuditService($pdo);
+            $voucherService = new VoucherService($pdo, $auditService, $admin_id);
             $inserted = 0;
             $skipped = 0;
+            $invalid = 0;
+            $processed = 0;
+            $headerSkipped = false;
 
-            for ($i = 1; $i < count($rows); $i++) {
-                $voucher_code = trim($rows[$i][0]);
-                $office = trim($rows[$i][1]);
-                $minutes_valid = intval($rows[$i][2]);
+            foreach ($rows as $row) {
+                $row = array_pad($row, 3, '');
+                $voucher_code = trim((string)$row[0]);
+                $office = trim((string)$row[1]);
+                $minutes_valid_raw = trim((string)$row[2]);
+
+                if (!$headerSkipped) {
+                    $headerProbe = strtolower($voucher_code . ' ' . $office . ' ' . $minutes_valid_raw);
+                    if (strpos($headerProbe, 'voucher') !== false || strpos($headerProbe, 'office') !== false || strpos($headerProbe, 'minute') !== false) {
+                        $headerSkipped = true;
+                        continue;
+                    }
+                    $headerSkipped = true;
+                }
+
+                if ($voucher_code === '' && $office === '' && $minutes_valid_raw === '') {
+                    continue;
+                }
+
+                $processed++;
+                $minutes_valid = (int)$minutes_valid_raw;
 
                 if ($voucher_code && $office && $minutes_valid > 0) {
                     try {
@@ -39,10 +59,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw $e;
                         }
                     }
+                } else {
+                    $invalid++;
                 }
             }
 
-            $_SESSION['import_success'] = "Successfully imported $inserted vouchers.";
+            if ($inserted > 0) {
+                $_SESSION['import_success'] = "Imported $inserted voucher(s). Skipped duplicates: $skipped. Invalid rows: $invalid.";
+            } elseif ($processed === 0) {
+                $_SESSION['import_error'] = "No data rows found. Check your file columns: Voucher Code, Office/Department, Minutes.";
+            } else {
+                $_SESSION['import_error'] = "No new vouchers imported. Duplicates: $skipped. Invalid rows: $invalid.";
+            }
         } catch (Exception $e) {
             $_SESSION['import_error'] = "Import failed: " . $e->getMessage();
         }
@@ -50,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['import_error'] = "Please upload a valid Excel file.";
     }
 
-    header("Location: vouchers.php");
+    header("Location: ../client/vouchers.php");
     exit();
 } else {
     echo "Invalid request method.";
